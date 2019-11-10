@@ -228,6 +228,7 @@ object el_f2frt_mn_v2 {
       connectionProperties.put("password", s"${jdbcPassword}")
       //connectionProperties.put("driver", "com.microsoft.sqlserver.jdbc.SQLServerDriver")
       connectionProperties.put("driver", s"${jdbcDriver}")
+      connectionProperties.put("fetchsize", "10000")
       /************************************************/
       try {
         val sqlTableDF = spark.read.jdbc(jdbc_url, appConf.getConfig(regn).getString("out.db.jdbcTable"), connectionProperties)
@@ -251,7 +252,7 @@ object el_f2frt_mn_v2 {
           case e @ (_ : java.sql.SQLSyntaxErrorException | _ : org.sqlite.SQLiteException) =>
             println(s"maybetabledoesnotexist ${e}")
             val finaldf = findf.toDF() //.toDF(sqlTableClmns: _*)
-            finaldf.write.mode(SaveMode.Append).option("createTableOptions", " ").jdbc(jdbc_url, appConf.getConfig(regn).getString("out.db.jdbcTable"), connectionProperties)
+            finaldf.write.mode(SaveMode.Append).option("createTableOptions", " ").option("numPartitions", 8).jdbc(jdbc_url, appConf.getConfig(regn).getString("out.db.jdbcTable"), connectionProperties)
         }
     } else {
       val tgtfilepath = appConf.getConfig(regn).getString("out.file.path")
