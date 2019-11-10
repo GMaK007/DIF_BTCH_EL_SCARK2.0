@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ScalaCompilerConfiguration">
+    <profile name="sbt 1" modules="DIF_BTCH_EL_SCARK2.0,dif_btch_el_scark2.0" />
+  </component>
+</project>
