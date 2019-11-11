@@ -193,7 +193,16 @@ object el_f2frt_mn_v2 {
     val defDF = cObj.defFields(spark,infileNm)
 
 //    val fulldf = filedf.crossJoin(defDF)
-    val fulldf = filedf
+    val base_infilenm = infileNm.split("/").last
+    val utildt = new java.util.Date()
+    val TODAY = new java.sql.Date(utildt.getTime())
+
+    val fileNAdf = filedf.withColumn( "NA", lit("NA"))
+    val fileBlankdf = fileNAdf.withColumn( "BLANK", lit(""))
+    val fileMOdf = fileBlankdf.withColumn( "mONE", lit(-1))
+    val fileFNdf = fileMOdf.withColumn( "IN_FILENM", lit(base_infilenm))
+    val fulldf = fileFNdf.withColumn( "PRCS_DT", lit(TODAY))
+//    val fulldf = filedf
 
     var new_sClmnNms = scala.collection.mutable.Buffer[String]()
     for (i <- 0 until sClmnNms.length) { new_sClmnNms += (sClmnNms(i)+"_"+(i+1).toString)}
@@ -204,18 +213,10 @@ object el_f2frt_mn_v2 {
       fulldf.select(sClmnNms.head, sClmnNms.tail: _*).toDF(new_sClmnNms: _*)
     }
 
-    val base_infilenm = infileNm.split("/").last
-    val utildt = new java.util.Date()
-    val TODAY = new java.sql.Date(utildt.getTime())
-
-    val finldf1 = findf.withColumn( "In_FileNm", lit(base_infilenm))
-    val finldf2 = finldf1.withColumn( "Prcs_Dt", lit(TODAY))
-
     if (!BTCH) {
       println("\n************** This is how your output would look like ***************\n")
-      finldf2.show(1)
+      findf.show(1)
     }
-    //findf.show(false)
 
     if (TABLE) {
       /***** Value declaration for DB Connection *****/
@@ -241,7 +242,7 @@ object el_f2frt_mn_v2 {
       try {
         val sqlTableDF = spark.read.jdbc(jdbc_url, appConf.getConfig(regn).getString("out.db.jdbcTable"), connectionProperties)
         val sqlTableClmns = sqlTableDF.columns
-        val finaldf = finldf2.toDF().toDF(sqlTableClmns: _*)
+        val finaldf = findf.toDF().toDF(sqlTableClmns: _*)
         if (appConf.getConfig(regn).getString("out.db.tblOverwrite") == "Y")
         {
           finaldf.write.mode(SaveMode.Overwrite).jdbc(jdbc_url, appConf.getConfig(regn).getString("out.db.jdbcTable"), connectionProperties)
@@ -259,7 +260,7 @@ object el_f2frt_mn_v2 {
           //            finaldf.write.mode(SaveMode.Append).option("createTableOptions", " ").jdbc(jdbc_url, appConf.getConfig(regn).getString("out.db.jdbcTable"), connectionProperties)
           case e @ (_ : java.sql.SQLSyntaxErrorException | _ : org.sqlite.SQLiteException) =>
             println(s"maybetabledoesnotexist ${e}")
-            val finaldf = finldf2.toDF() //.toDF(sqlTableClmns: _*)
+            val finaldf = findf.toDF() //.toDF(sqlTableClmns: _*)
             finaldf.write.mode(SaveMode.Append).option("createTableOptions", " ").option("numPartitions", 8).jdbc(jdbc_url, appConf.getConfig(regn).getString("out.db.jdbcTable"), connectionProperties)
         }
     } else {
@@ -267,7 +268,7 @@ object el_f2frt_mn_v2 {
       val now = Calendar.getInstance().getTime().toString().split(" ")
       val ts = now(2) + now(1) + now(5) + "_" + now(3).replaceAll(":", "")
       val outFileNm = tgtfilepath + appConf.getConfig(regn).getString("out.file.name") + ts
-      finldf2.coalesce(1).write.format("csv").option("delimiter", appConf.getConfig(regn).getString("out.file.delimiter")).option("header", "true").save(outFileNm)
+      findf.coalesce(1).write.format("csv").option("delimiter", appConf.getConfig(regn).getString("out.file.delimiter")).option("header", "true").save(outFileNm)
     }
 
     spark.stop()
