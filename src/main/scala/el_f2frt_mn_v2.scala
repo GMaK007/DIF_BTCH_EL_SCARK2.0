@@ -3,12 +3,12 @@ package com.ms.scark.etl
 import java.sql.SQLSyntaxErrorException
 
 import org.apache.spark.sql.{DataFrame, Row, SaveMode, SparkSession}
-import org.apache.spark.sql.functions._
+import org.apache.spark.sql.functions.{lit, udf, _}
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.expressions.Window
+import org.apache.spark.sql.types.{DateType, IntegerType}
 
 import scala.io.Source
-//import java.text.SimpleDateFormat
 import java.util.{Calendar, Properties, Date}
 import java.sql.Date
 import java.io.File
@@ -192,10 +192,21 @@ object el_f2frt_mn_v2 {
     }
     val defDF = cObj.defFields(spark,infileNm)
 
-    val fulldf = filedf.crossJoin(defDF)
+//    val fulldf = filedf.crossJoin(defDF)
+    val base_infilenm = infileNm.split("/").last
+    val utildt = new java.util.Date()
+    val TODAY = new java.sql.Timestamp(utildt.getTime())
+
+    val fileNAdf = filedf.withColumn( "NA", lit("NA"))
+    val fileBlankdf = fileNAdf.withColumn( "BLANK", when(lit("").isNotNull, lit("")).otherwise(lit(null)))
+    val fileMOdf = fileBlankdf.withColumn( "mONE", lit(-1))
+    val fileFNdf = fileMOdf.withColumn( "IN_FILENM", lit(base_infilenm))
+    val fulldf = fileFNdf.withColumn( "PRCS_DT", lit(TODAY).cast(TimestampType))
 
     var new_sClmnNms = scala.collection.mutable.Buffer[String]()
-    for (i <- 0 until sClmnNms.length) { new_sClmnNms += (sClmnNms(i)+"_"+(i+1).toString)}
+//    for (i <- 0 until sClmnNms.length) { new_sClmnNms += (sClmnNms(i)+"_"+(i+1).toString)}
+    for (i <- 0 until sClmnNms.length) {
+    new_sClmnNms += (if (new_sClmnNms.contains(sClmnNms(i))) {sClmnNms(i)+"_C_"+((new_sClmnNms.filter(_.split("_C_")(0) == sClmnNms(i)).size-1)+1).toString} else {sClmnNms(i)})}
 
     val findf = if (sClmnNms.distinct.length == new_sClmnNms.length) {
       fulldf.select(sClmnNms.head, sClmnNms.tail: _*)
@@ -207,7 +218,6 @@ object el_f2frt_mn_v2 {
       println("\n************** This is how your output would look like ***************\n")
       findf.show(1)
     }
-    //findf.show(false)
 
     if (TABLE) {
       /***** Value declaration for DB Connection *****/
@@ -228,6 +238,7 @@ object el_f2frt_mn_v2 {
       connectionProperties.put("password", s"${jdbcPassword}")
       //connectionProperties.put("driver", "com.microsoft.sqlserver.jdbc.SQLServerDriver")
       connectionProperties.put("driver", s"${jdbcDriver}")
+      connectionProperties.put("fetchsize", "50000")
       /************************************************/
       try {
         val sqlTableDF = spark.read.jdbc(jdbc_url, appConf.getConfig(regn).getString("out.db.jdbcTable"), connectionProperties)
@@ -251,7 +262,7 @@ object el_f2frt_mn_v2 {
           case e @ (_ : java.sql.SQLSyntaxErrorException | _ : org.sqlite.SQLiteException) =>
             println(s"maybetabledoesnotexist ${e}")
             val finaldf = findf.toDF() //.toDF(sqlTableClmns: _*)
-            finaldf.write.mode(SaveMode.Append).option("createTableOptions", " ").jdbc(jdbc_url, appConf.getConfig(regn).getString("out.db.jdbcTable"), connectionProperties)
+            finaldf.write.mode(SaveMode.Append).option("createTableOptions", " ").option("numPartitions", 8).jdbc(jdbc_url, appConf.getConfig(regn).getString("out.db.jdbcTable"), connectionProperties)
         }
     } else {
       val tgtfilepath = appConf.getConfig(regn).getString("out.file.path")
