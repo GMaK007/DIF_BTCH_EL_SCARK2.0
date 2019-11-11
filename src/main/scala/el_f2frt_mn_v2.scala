@@ -3,12 +3,12 @@ package com.ms.scark.etl
 import java.sql.SQLSyntaxErrorException
 
 import org.apache.spark.sql.{DataFrame, Row, SaveMode, SparkSession}
-import org.apache.spark.sql.functions._
+import org.apache.spark.sql.functions.{lit, udf, _}
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.expressions.Window
+import org.apache.spark.sql.types.{DateType, IntegerType}
 
 import scala.io.Source
-//import java.text.SimpleDateFormat
 import java.util.{Calendar, Properties, Date}
 import java.sql.Date
 import java.io.File
@@ -195,17 +195,18 @@ object el_f2frt_mn_v2 {
 //    val fulldf = filedf.crossJoin(defDF)
     val base_infilenm = infileNm.split("/").last
     val utildt = new java.util.Date()
-    val TODAY = new java.sql.Date(utildt.getTime())
+    val TODAY = new java.sql.Timestamp(utildt.getTime())
 
     val fileNAdf = filedf.withColumn( "NA", lit("NA"))
-    val fileBlankdf = fileNAdf.withColumn( "BLANK", lit(""))
+    val fileBlankdf = fileNAdf.withColumn( "BLANK", when(lit("").isNotNull, lit("")).otherwise(lit(null)))
     val fileMOdf = fileBlankdf.withColumn( "mONE", lit(-1))
     val fileFNdf = fileMOdf.withColumn( "IN_FILENM", lit(base_infilenm))
-    val fulldf = fileFNdf.withColumn( "PRCS_DT", lit(TODAY))
-//    val fulldf = filedf
+    val fulldf = fileFNdf.withColumn( "PRCS_DT", lit(TODAY).cast(TimestampType))
 
     var new_sClmnNms = scala.collection.mutable.Buffer[String]()
-    for (i <- 0 until sClmnNms.length) { new_sClmnNms += (sClmnNms(i)+"_"+(i+1).toString)}
+//    for (i <- 0 until sClmnNms.length) { new_sClmnNms += (sClmnNms(i)+"_"+(i+1).toString)}
+    for (i <- 0 until sClmnNms.length) {
+    new_sClmnNms += (if (new_sClmnNms.contains(sClmnNms(i))) {sClmnNms(i)+"_C_"+((new_sClmnNms.filter(_.split("_C_")(0) == sClmnNms(i)).size-1)+1).toString} else {sClmnNms(i)})}
 
     val findf = if (sClmnNms.distinct.length == new_sClmnNms.length) {
       fulldf.select(sClmnNms.head, sClmnNms.tail: _*)
